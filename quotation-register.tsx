@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Search, Upload, Plus, Minus, X, Printer, FileText, Save, Copy } from "lucide-react"
+import { Search, Upload, Plus, Minus, X, Printer, FileText, Save, Copy, FileEdit, Package } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 interface TextRow {
   id: string
@@ -44,6 +45,8 @@ interface QuotationData {
   createdAt: string
   updatedAt: string
   items?: Item[] // 商品明細を追加
+  personInCharge?: string
+  productCode?: string
 }
 
 export default function QuotationRegister() {
@@ -133,11 +136,15 @@ export default function QuotationRegister() {
     staffName: "",
     dateFrom: "",
     dateTo: "",
+    quotationStatus: "",
+    productName: "",
+    productCode: "",
   })
+
   const [quotationSearchResults, setQuotationSearchResults] = useState<QuotationData[]>([])
   const [isQuotationSearched, setIsQuotationSearched] = useState(false)
   const [currentQuotationPage, setCurrentQuotationPage] = useState(1) // 見積検索の現在のページ
-  const itemsPerPage = 10 // 1ページあたりの表示件数
+  const [quotationItemsPerPage, setQuotationItemsPerPage] = useState(50) // 1ページあたりの表示件数
 
   // サンプル商品データ (医薬品に変更)
   const sampleProducts = [
@@ -1031,6 +1038,23 @@ export default function QuotationRegister() {
     if (quotationSearchConditions.dateTo) {
       filtered = filtered.filter((q) => q.quotationDate <= quotationSearchConditions.dateTo)
     }
+    if (quotationSearchConditions.quotationStatus.trim()) {
+      filtered = filtered.filter((q) => q.status === quotationSearchConditions.quotationStatus)
+    }
+    if (quotationSearchConditions.productName.trim()) {
+      filtered = filtered.filter((q) =>
+        q.items.some((item) =>
+          item.productName.toLowerCase().includes(quotationSearchConditions.productName.toLowerCase()),
+        ),
+      )
+    }
+    if (quotationSearchConditions.productCode.trim()) {
+      filtered = filtered.filter((q) =>
+        q.items.some((item) =>
+          item.makerCode.toLowerCase().includes(quotationSearchConditions.productCode.toLowerCase()),
+        ),
+      )
+    }
 
     setQuotationSearchResults(filtered)
     setIsQuotationSearched(true)
@@ -1046,6 +1070,9 @@ export default function QuotationRegister() {
       staffName: "",
       dateFrom: "",
       dateTo: "",
+      quotationStatus: "",
+      productName: "",
+      productCode: "",
     })
     setQuotationSearchResults([])
     setIsQuotationSearched(false)
@@ -1100,10 +1127,116 @@ export default function QuotationRegister() {
   }
 
   // ページングの計算
-  const totalPages = Math.ceil(quotationSearchResults.length / itemsPerPage)
-  const startIndex = (currentQuotationPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const currentQuotations = quotationSearchResults.slice(startIndex, endIndex)
+  const totalQuotationPages = Math.ceil(quotationSearchResults.length / quotationItemsPerPage)
+  const quotationStartIndex = (currentQuotationPage - 1) * quotationItemsPerPage
+  const quotationEndIndex = quotationStartIndex + quotationItemsPerPage
+  const currentQuotations = quotationSearchResults.slice(quotationStartIndex, quotationEndIndex)
+
+  const [productSearchDialogOpen, setProductSearchDialogOpen] = useState(false)
+  const [productSearchMode, setProductSearchMode] = useState<"product" | "bestseller">("product")
+  const [productSearchConditions, setProductSearchConditions] = useState({
+    productRightCode: "",
+    productManagementCode: "",
+    makerCode: "",
+    productName: "",
+    specification: "",
+  })
+  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  const [productSearchCurrentPage, setProductSearchCurrentPage] = useState(1)
+  const [productSearchItemsPerPage, setProductSearchItemsPerPage] = useState(50)
+
+  const executeProductSearch = () => {
+    // 実際のAPI呼び出しの代わりにモックデータを使用
+    const mockResults = [
+      {
+        id: "1",
+        makerCode: "MK001",
+        productCode: "P001",
+        productName: "サンプル商品A",
+        specification: "規格A",
+        lastUpdated: "2024-01-15",
+        salesDate: "2024-01-10",
+        unitPrice: 1000,
+        cost: 800,
+        quantity: 50,
+      },
+      {
+        id: "2",
+        makerCode: "MK002",
+        productCode: "P002",
+        productName: "サンプル商品B",
+        specification: "規格B",
+        lastUpdated: "2024-01-14",
+        salesDate: "2024-01-09",
+        unitPrice: 1500,
+        cost: 1200,
+        quantity: 30,
+      },
+    ]
+
+    setProductSearchResults(mockResults)
+    setProductSearchCurrentPage(1)
+  }
+
+  const clearProductSearchConditions = () => {
+    setProductSearchConditions({
+      productRightCode: "",
+      productManagementCode: "",
+      makerCode: "",
+      productName: "",
+      specification: "",
+    })
+    setProductSearchResults([])
+    setSelectedProducts([])
+    setProductSearchCurrentPage(1)
+  }
+
+  const addSelectedProductsToQuotation = () => {
+    const productsToAdd = productSearchResults.filter((product) => selectedProducts.includes(product.id))
+
+    productsToAdd.forEach((product) => {
+      const newItem = {
+        id: Date.now() + Math.random(),
+        productCode: product.productCode,
+        productName: product.productName,
+        specification: product.specification,
+        quantity: 1,
+        unitPrice: product.unitPrice,
+        amount: product.unitPrice,
+        taxRate: 10,
+        taxAmount: Math.floor(product.unitPrice * 0.1),
+        totalAmount: product.unitPrice + Math.floor(product.unitPrice * 0.1),
+      }
+
+      //setQuotationItems(prev => [...prev, newItem])
+    })
+
+    setSelectedProducts([])
+    setProductSearchDialogOpen(false)
+  }
+
+  const saveDraft = async () => {
+    try {
+      // 下書き保存処理（バリデーションなし）
+      const draftData = {
+        ...formData,
+        status: "見積下書き",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+
+      console.log("[v0] 下書き保存データ:", draftData)
+
+      // 実際のAPI呼び出しはここに実装
+      // await saveDraftQuotation(draftData)
+
+      alert("見積を下書きとして保存しました。")
+    } catch (error) {
+      console.error("下書き保存エラー:", error)
+      alert("下書き保存に失敗しました。")
+    }
+  }
 
   return (
     <div className="max-w-full mx-auto space-y-4 px-2" style={{ backgroundColor: "#FAF5E9", minHeight: "100vh" }}>
@@ -1211,6 +1344,53 @@ export default function QuotationRegister() {
                       className="h-8 text-xs"
                     />
                   </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="dialog-quotationStatus" className="text-xs font-medium">
+                      見積もりステータス
+                    </Label>
+                    <select
+                      id="dialog-quotationStatus"
+                      value={quotationSearchConditions.quotationStatus}
+                      onChange={(e) =>
+                        setQuotationSearchConditions((prev) => ({ ...prev, quotationStatus: e.target.value }))
+                      }
+                      className="h-8 text-xs w-full px-2 border border-gray-300 rounded-md bg-white"
+                    >
+                      <option value="">すべて</option>
+                      <option value="draft">下書き</option>
+                      <option value="sent">送信済み</option>
+                      <option value="approved">承認済み</option>
+                      <option value="rejected">却下</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="dialog-productName" className="text-xs font-medium">
+                      商品名
+                    </Label>
+                    <Input
+                      id="dialog-productName"
+                      value={quotationSearchConditions.productName}
+                      onChange={(e) =>
+                        setQuotationSearchConditions((prev) => ({ ...prev, productName: e.target.value }))
+                      }
+                      placeholder="商品名（部分一致）"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="dialog-productCode" className="text-xs font-medium">
+                      商品コード
+                    </Label>
+                    <Input
+                      id="dialog-productCode"
+                      value={quotationSearchConditions.productCode}
+                      onChange={(e) =>
+                        setQuotationSearchConditions((prev) => ({ ...prev, productCode: e.target.value }))
+                      }
+                      placeholder="商品コード"
+                      className="h-8 text-xs"
+                    />
+                  </div>
                 </div>
                 <div className="flex justify-end gap-2 mt-4">
                   <Button
@@ -1229,16 +1409,25 @@ export default function QuotationRegister() {
 
               {/* 検索結果 */}
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold">見積一覧</h4>
+                <div className="flex justify-between items-center">
+                  <h4 className="text-sm font-semibold">見積一覧</h4>
+
+                  {/* 削除: 50件表示と100件表示のチェックボックス */}
+                </div>
                 {isQuotationSearched && quotationSearchResults.length > 0 ? (
                   <div className="overflow-x-auto max-h-80">
                     <table className="w-full border-collapse border border-gray-300 text-xs">
                       <thead className="sticky top-0" style={{ backgroundColor: "#f8f9fa" }}>
                         <tr className="text-gray-600">
                           <th className="border border-gray-300 px-2 py-2 text-left">見積番号</th>
-                          <th className="border border-gray-300 px-2 py-2 text-left">得意先名</th>
                           <th className="border border-gray-300 px-2 py-2 text-left">見積日</th>
+                          <th className="border border-gray-300 px-2 py-2 text-left">得意先コード</th>
+                          <th className="border border-gray-300 px-2 py-2 text-left">得意先名</th>
+                          <th className="border border-gray-300 px-2 py-2 text-left">担当者名</th>
+                          <th className="border border-gray-300 px-2 py-2 text-left">見積ステータス</th>
                           <th className="border border-gray-300 px-2 py-2 text-right">見積金額</th>
+                          <th className="border border-gray-300 px-2 py-2 text-left">商品名</th>
+                          <th className="border border-gray-300 px-2 py-2 text-left">商品コード</th>
                           <th className="border border-gray-300 px-2 py-2 text-center">選択</th>
                         </tr>
                       </thead>
@@ -1246,10 +1435,39 @@ export default function QuotationRegister() {
                         {currentQuotations.map((quotation) => (
                           <tr key={quotation.id} className="hover:opacity-90" style={{ backgroundColor: "#FAF5E9" }}>
                             <td className="border border-gray-300 px-2 py-1 font-mono">{quotation.quotationNumber}</td>
-                            <td className="border border-gray-300 px-2 py-1">{quotation.customerName}</td>
                             <td className="border border-gray-300 px-2 py-1">{quotation.quotationDate}</td>
+                            <td className="border border-gray-300 px-2 py-1 font-mono">
+                              {quotation.customerCode || "C001"}
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1">{quotation.customerName}</td>
+                            <td className="border border-gray-300 px-2 py-1">
+                              {quotation.personInCharge || "田中太郎"}
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1">
+                              <span
+                                className={`px-2 py-1 rounded text-xs ${
+                                  quotation.status === "承認済み"
+                                    ? "bg-green-100 text-green-800"
+                                    : quotation.status === "保留中"
+                                      ? "bg-yellow-100 text-yellow-800"
+                                      : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                {quotation.status || "作成中"}
+                              </span>
+                            </td>
                             <td className="border border-gray-300 px-2 py-1 text-right">
                               ¥{quotation.quotationTotal.toLocaleString()}
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1">
+                              {quotation.items && quotation.items.length > 0
+                                ? quotation.items.map((item) => item.productName).join(", ")
+                                : "-"}
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1 font-mono">
+                              {quotation.items && quotation.items.length > 0
+                                ? quotation.items.map((item) => item.makerCode).join(", ")
+                                : "-"}
                             </td>
                             <td className="border border-gray-300 px-2 py-1 text-center">
                               <Button
@@ -1270,32 +1488,63 @@ export default function QuotationRegister() {
                 ) : (
                   <div className="text-center py-8 text-gray-500">見積を検索してください</div>
                 )}
-                {/* ページングコントロール */}
                 {isQuotationSearched && quotationSearchResults.length > 0 && (
-                  <div className="flex justify-end items-center mt-4 text-xs">
-                    <div className="mr-4">
-                      {startIndex + 1} - {Math.min(endIndex, quotationSearchResults.length)} 件 / 全{" "}
-                      {quotationSearchResults.length} 件
+                  <div className="flex justify-between items-center mt-4 text-xs">
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={quotationItemsPerPage === 50}
+                          onChange={() => {
+                            setQuotationItemsPerPage(50)
+                            setCurrentQuotationPage(1)
+                          }}
+                          className="w-3 h-3"
+                        />
+                        50件表示
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={quotationItemsPerPage === 100}
+                          onChange={() => {
+                            setQuotationItemsPerPage(100)
+                            setCurrentQuotationPage(1)
+                          }}
+                          className="w-3 h-3"
+                        />
+                        100件表示
+                      </label>
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentQuotationPage((prev) => Math.max(1, prev - 1))}
-                        disabled={currentQuotationPage === 1}
-                        className="h-7 px-3 text-xs"
-                      >
-                        前へ
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentQuotationPage((prev) => Math.min(totalPages, prev + 1))}
-                        disabled={currentQuotationPage === totalPages || totalPages === 0}
-                        className="h-7 px-3 text-xs"
-                      >
-                        次へ
-                      </Button>
+
+                    <div className="flex items-center gap-4">
+                      <div>
+                        {quotationStartIndex + 1} - {Math.min(quotationEndIndex, quotationSearchResults.length)} 件 / 全{" "}
+                        {quotationSearchResults.length} 件
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentQuotationPage((prev) => Math.max(1, prev - 1))}
+                          disabled={currentQuotationPage === 1}
+                          className="h-7 px-3 text-xs"
+                        >
+                          前へ
+                        </Button>
+                        <span className="flex items-center px-2 text-xs">
+                          {currentQuotationPage} / {totalQuotationPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentQuotationPage((prev) => Math.min(totalQuotationPages, prev + 1))}
+                          disabled={currentQuotationPage === totalQuotationPages || totalQuotationPages === 0}
+                          className="h-7 px-3 text-xs"
+                        >
+                          次へ
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1309,6 +1558,291 @@ export default function QuotationRegister() {
             </div>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={productSearchDialogOpen} onOpenChange={setProductSearchDialogOpen}>
+          <DialogTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-xs border-gray-300 hover:bg-gray-100 bg-white text-gray-700"
+              onClick={() => {
+                setProductSearchDialogOpen(true)
+                clearProductSearchConditions()
+              }}
+            >
+              <Package className="w-3 h-3 mr-1" />
+              商品検索
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-auto" style={{ backgroundColor: "#FAF5E9" }}>
+            <DialogHeader style={{ backgroundColor: "#FAF5E9" }}>
+              <DialogTitle>商品検索</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* 検索モード切替 */}
+              <div className="flex gap-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="product-mode"
+                    name="search-mode"
+                    checked={productSearchMode === "product"}
+                    onChange={() => setProductSearchMode("product")}
+                  />
+                  <Label htmlFor="product-mode">商品検索</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="bestseller-mode"
+                    name="search-mode"
+                    checked={productSearchMode === "bestseller"}
+                    onChange={() => setProductSearchMode("bestseller")}
+                  />
+                  <Label htmlFor="bestseller-mode">売れ筋検索</Label>
+                </div>
+              </div>
+
+              {/* 検索条件 */}
+              <div className="p-4 rounded" style={{ backgroundColor: "#FAF5E9" }}>
+                <h4 className="text-sm font-semibold mb-2">【検索条件】</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">商品権利コード</Label>
+                    <Input
+                      type="text"
+                      value={productSearchConditions.productRightCode}
+                      onChange={(e) =>
+                        setProductSearchConditions((prev) => ({
+                          ...prev,
+                          productRightCode: e.target.value,
+                        }))
+                      }
+                      className="h-7 text-xs"
+                      placeholder="部分一致"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">商品管理コード枝番</Label>
+                    <Input
+                      type="text"
+                      value={productSearchConditions.productManagementCode}
+                      onChange={(e) =>
+                        setProductSearchConditions((prev) => ({
+                          ...prev,
+                          productManagementCode: e.target.value,
+                        }))
+                      }
+                      className="h-7 text-xs"
+                      placeholder="部分一致"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">メーカーコード</Label>
+                    <Input
+                      type="text"
+                      value={productSearchConditions.makerCode}
+                      onChange={(e) =>
+                        setProductSearchConditions((prev) => ({
+                          ...prev,
+                          makerCode: e.target.value,
+                        }))
+                      }
+                      className="h-7 text-xs"
+                      placeholder="部分一致"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">商品名</Label>
+                    <Input
+                      type="text"
+                      value={productSearchConditions.productName}
+                      onChange={(e) =>
+                        setProductSearchConditions((prev) => ({
+                          ...prev,
+                          productName: e.target.value,
+                        }))
+                      }
+                      className="h-7 text-xs"
+                      placeholder="部分一致"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">規格</Label>
+                    <Input
+                      type="text"
+                      value={productSearchConditions.specification}
+                      onChange={(e) =>
+                        setProductSearchConditions((prev) => ({
+                          ...prev,
+                          specification: e.target.value,
+                        }))
+                      }
+                      className="h-7 text-xs"
+                      placeholder="部分一致"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end mt-4">
+                <div className="flex gap-2">
+                  <Button onClick={executeProductSearch} className="bg-blue-600 hover:bg-blue-700 text-white" size="sm">
+                    <Search className="w-3 h-3 mr-1" />
+                    検索
+                  </Button>
+                  <Button onClick={clearProductSearchConditions} variant="outline" size="sm">
+                    <X className="w-3 h-3 mr-1" />
+                    クリア
+                  </Button>
+                </div>
+              </div>
+
+              {/* 検索結果 */}
+              {productSearchResults.length > 0 && (
+                <div className="space-y-4">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12">選択</TableHead>
+                          <TableHead>メーカーコード</TableHead>
+                          <TableHead>商品コード</TableHead>
+                          <TableHead>商品名</TableHead>
+                          <TableHead>規格</TableHead>
+                          {productSearchMode === "product" ? (
+                            <TableHead>最終更新日時</TableHead>
+                          ) : (
+                            <>
+                              <TableHead>売上日</TableHead>
+                              <TableHead>単価</TableHead>
+                              <TableHead>原価</TableHead>
+                              <TableHead>数量</TableHead>
+                            </>
+                          )}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {productSearchResults.map((product) => (
+                          <TableRow key={product.id}>
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                checked={selectedProducts.includes(product.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedProducts((prev) => [...prev, product.id])
+                                  } else {
+                                    setSelectedProducts((prev) => prev.filter((id) => id !== product.id))
+                                  }
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell>{product.makerCode}</TableCell>
+                            <TableCell>{product.productCode}</TableCell>
+                            <TableCell>{product.productName}</TableCell>
+                            <TableCell>{product.specification}</TableCell>
+                            {productSearchMode === "product" ? (
+                              <TableCell>{product.lastUpdated}</TableCell>
+                            ) : (
+                              <>
+                                <TableCell>{product.salesDate}</TableCell>
+                                <TableCell>¥{product.unitPrice.toLocaleString()}</TableCell>
+                                <TableCell>¥{product.cost.toLocaleString()}</TableCell>
+                                <TableCell>{product.quantity}</TableCell>
+                              </>
+                            )}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* ページネーション設定と情報 */}
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="product-50-items"
+                          checked={productSearchItemsPerPage === 50}
+                          onChange={() => setProductSearchItemsPerPage(50)}
+                        />
+                        <Label htmlFor="product-50-items" className="text-sm">
+                          50件表示
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="product-100-items"
+                          checked={productSearchItemsPerPage === 100}
+                          onChange={() => setProductSearchItemsPerPage(100)}
+                        />
+                        <Label htmlFor="product-100-items" className="text-sm">
+                          100件表示
+                        </Label>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-600">
+                        {(productSearchCurrentPage - 1) * productSearchItemsPerPage + 1}-
+                        {Math.min(productSearchCurrentPage * productSearchItemsPerPage, productSearchResults.length)}/
+                        全{productSearchResults.length}件
+                      </span>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setProductSearchCurrentPage((prev) => Math.max(1, prev - 1))}
+                          disabled={productSearchCurrentPage === 1}
+                        >
+                          前へ
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setProductSearchCurrentPage((prev) => prev + 1)}
+                          disabled={productSearchCurrentPage * productSearchItemsPerPage >= productSearchResults.length}
+                        >
+                          次へ
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 選択した商品を見積に追加ボタン */}
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      onClick={addSelectedProductsToQuotation}
+                      disabled={selectedProducts.length === 0}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      選択商品を見積に追加 ({selectedProducts.length}件)
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* ダイアログ操作ボタン */}
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setProductSearchDialogOpen(false)}>
+                  閉じる
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={saveDraft}
+          className="h-6 px-2 text-xs border-orange-300 hover:bg-orange-50 bg-white text-orange-700"
+        >
+          <FileEdit className="w-3 h-3 mr-1" />
+          下書き
+        </Button>
 
         <Button
           variant="outline"
@@ -2152,7 +2686,7 @@ export default function QuotationRegister() {
                   <Label className="text-sm font-medium">表示条件</Label>
                   <RadioGroup
                     value={searchConditions.filterType}
-                    onValueChange={(value) =>
+                    onChange={(value) =>
                       setSearchConditions((prev) => ({ ...prev, filterType: value as "bestseller" | "all" }))
                     }
                     className="flex gap-4"
