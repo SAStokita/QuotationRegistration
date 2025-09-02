@@ -7,9 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Search, Upload, Plus, Minus, X, Printer, FileText, Save, Copy, FileEdit, Package } from "lucide-react"
+import { Search, Upload, Plus, Minus, X, Printer, FileText, Save, CheckCircle, XCircle } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Textarea } from "@/components/ui/textarea"
 
 interface TextRow {
   id: string
@@ -45,8 +45,6 @@ interface QuotationData {
   createdAt: string
   updatedAt: string
   items?: Item[] // 商品明細を追加
-  personInCharge?: string
-  productCode?: string
 }
 
 export default function QuotationRegister() {
@@ -136,15 +134,19 @@ export default function QuotationRegister() {
     staffName: "",
     dateFrom: "",
     dateTo: "",
-    quotationStatus: "",
     productName: "",
     productCode: "",
+    myApprovalOnly: false,
   })
-
   const [quotationSearchResults, setQuotationSearchResults] = useState<QuotationData[]>([])
   const [isQuotationSearched, setIsQuotationSearched] = useState(false)
+
   const [currentQuotationPage, setCurrentQuotationPage] = useState(1) // 見積検索の現在のページ
-  const [quotationItemsPerPage, setQuotationItemsPerPage] = useState(50) // 1ページあたりの表示件数
+  const [itemsPerPage, setItemsPerPage] = useState(50) // 1ページあたりの表示件数（デフォルト50件）
+
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false)
+  const [approvalType, setApprovalType] = useState<"approve" | "reject">("approve")
+  const [approvalReason, setApprovalReason] = useState("")
 
   // サンプル商品データ (医薬品に変更)
   const sampleProducts = [
@@ -745,8 +747,11 @@ export default function QuotationRegister() {
 
   // 得意先検索を開く
   const openCustomerSearch = () => {
+    console.log("[v0] openCustomerSearch called")
+    console.log("[v0] customerSearchOpen before:", customerSearchOpen)
     setCustomerSearchCondition("")
     setCustomerSearchOpen(true)
+    console.log("[v0] customerSearchOpen set to true")
   }
 
   // 得意先検索結果をフィルタリング
@@ -1038,9 +1043,6 @@ export default function QuotationRegister() {
     if (quotationSearchConditions.dateTo) {
       filtered = filtered.filter((q) => q.quotationDate <= quotationSearchConditions.dateTo)
     }
-    if (quotationSearchConditions.quotationStatus.trim()) {
-      filtered = filtered.filter((q) => q.status === quotationSearchConditions.quotationStatus)
-    }
     if (quotationSearchConditions.productName.trim()) {
       filtered = filtered.filter((q) =>
         q.items.some((item) =>
@@ -1070,16 +1072,62 @@ export default function QuotationRegister() {
       staffName: "",
       dateFrom: "",
       dateTo: "",
-      quotationStatus: "",
       productName: "",
       productCode: "",
+      myApprovalOnly: false,
     })
     setQuotationSearchResults([])
     setIsQuotationSearched(false)
     setCurrentQuotationPage(1) // クリア時にページをリセット
   }
 
-  // 見積検索ダイアログから見積を選択
+  const duplicateQuotationFromSearch = (quotation: QuotationData) => {
+    const newItems = Array.from(
+      { length: 20 },
+      (): Item => ({
+        makerName: "",
+        makerCode: "",
+        productName: "",
+        quantity: "",
+        unit: "",
+        unitPrice: "",
+        amount: 0,
+        note: "",
+        internalMemo: "",
+        listPrice: "",
+        wholesalePrice: "",
+        profitRate: 0,
+        textRows: [],
+      }),
+    )
+
+    let totalAmount = 0
+    if (quotation.items) {
+      quotation.items.forEach((item, idx) => {
+        if (idx < 20) {
+          const calculatedProfitRate = calculateProfitRate(item.listPrice, item.wholesalePrice)
+          newItems[idx] = { ...item, profitRate: calculatedProfitRate }
+          totalAmount += item.amount
+        }
+      })
+    }
+
+    // 複製の場合は見積番号を空にして新規として扱う
+    setFormData((prev) => ({
+      ...prev,
+      quotationNumber: "", // 見積番号は空にする
+      quotationDate: new Date().toISOString().split("T")[0], // 今日の日付を設定
+      customerCode: quotation.customerCode,
+      customerName: quotation.customerName,
+      title: quotation.title,
+      staffName: quotation.staffName,
+      quotationTotal: totalAmount,
+      items: newItems,
+    }))
+    setVisibleRows(quotation.items ? Math.max(quotation.items.length, 1) : 1)
+    setQuotationSearchDialogOpen(false)
+  }
+
   const selectQuotationFromSearch = (quotation: QuotationData) => {
     const newItems = Array.from(
       { length: 20 },
@@ -1127,121 +1175,31 @@ export default function QuotationRegister() {
   }
 
   // ページングの計算
-  const totalQuotationPages = Math.ceil(quotationSearchResults.length / quotationItemsPerPage)
-  const quotationStartIndex = (currentQuotationPage - 1) * quotationItemsPerPage
-  const quotationEndIndex = quotationStartIndex + quotationItemsPerPage
-  const currentQuotations = quotationSearchResults.slice(quotationStartIndex, quotationEndIndex)
+  const totalPages = Math.ceil(quotationSearchResults.length / itemsPerPage)
+  const startIndex = (currentQuotationPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const currentQuotations = quotationSearchResults.slice(startIndex, endIndex)
 
-  const [productSearchDialogOpen, setProductSearchDialogOpen] = useState(false)
-  const [productSearchMode, setProductSearchMode] = useState<"product" | "bestseller">("product")
-  const [productSearchConditions, setProductSearchConditions] = useState({
-    productRightCode: "",
-    productManagementCode: "",
-    makerCode: "",
-    productName: "",
-    specification: "",
-  })
-  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
-  const [productSearchCurrentPage, setProductSearchCurrentPage] = useState(1)
-  const [productSearchItemsPerPage, setProductSearchItemsPerPage] = useState(50)
-
-  const executeProductSearch = () => {
-    // 実際のAPI呼び出しの代わりにモックデータを使用
-    const mockResults = [
-      {
-        id: "1",
-        makerCode: "MK001",
-        productCode: "P001",
-        productName: "サンプル商品A",
-        specification: "規格A",
-        lastUpdated: "2024-01-15",
-        salesDate: "2024-01-10",
-        unitPrice: 1000,
-        cost: 800,
-        quantity: 50,
-      },
-      {
-        id: "2",
-        makerCode: "MK002",
-        productCode: "P002",
-        productName: "サンプル商品B",
-        specification: "規格B",
-        lastUpdated: "2024-01-14",
-        salesDate: "2024-01-09",
-        unitPrice: 1500,
-        cost: 1200,
-        quantity: 30,
-      },
-    ]
-
-    setProductSearchResults(mockResults)
-    setProductSearchCurrentPage(1)
+  const handleApprovalAction = (type: "approve" | "reject") => {
+    setApprovalType(type)
+    setApprovalReason("")
+    setApprovalDialogOpen(true)
   }
 
-  const clearProductSearchConditions = () => {
-    setProductSearchConditions({
-      productRightCode: "",
-      productManagementCode: "",
-      makerCode: "",
-      productName: "",
-      specification: "",
-    })
-    setProductSearchResults([])
-    setSelectedProducts([])
-    setProductSearchCurrentPage(1)
-  }
-
-  const addSelectedProductsToQuotation = () => {
-    const productsToAdd = productSearchResults.filter((product) => selectedProducts.includes(product.id))
-
-    productsToAdd.forEach((product) => {
-      const newItem = {
-        id: Date.now() + Math.random(),
-        productCode: product.productCode,
-        productName: product.productName,
-        specification: product.specification,
-        quantity: 1,
-        unitPrice: product.unitPrice,
-        amount: product.unitPrice,
-        taxRate: 10,
-        taxAmount: Math.floor(product.unitPrice * 0.1),
-        totalAmount: product.unitPrice + Math.floor(product.unitPrice * 0.1),
-      }
-
-      //setQuotationItems(prev => [...prev, newItem])
-    })
-
-    setSelectedProducts([])
-    setProductSearchDialogOpen(false)
-  }
-
-  const saveDraft = async () => {
-    try {
-      // 下書き保存処理（バリデーションなし）
-      const draftData = {
-        ...formData,
-        status: "見積下書き",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
-
-      console.log("[v0] 下書き保存データ:", draftData)
-
-      // 実際のAPI呼び出しはここに実装
-      // await saveDraftQuotation(draftData)
-
-      alert("見積を下書きとして保存しました。")
-    } catch (error) {
-      console.error("下書き保存エラー:", error)
-      alert("下書き保存に失敗しました。")
-    }
+  const submitApprovalAction = () => {
+    console.log(`[v0] ${approvalType === "approve" ? "承認" : "否認"}処理:`, approvalReason)
+    // 実際の登録処理はここに実装
+    setApprovalDialogOpen(false)
+    setApprovalReason("")
   }
 
   return (
     <div className="max-w-full mx-auto space-y-4 px-2" style={{ backgroundColor: "#FAF5E9", minHeight: "100vh" }}>
-      {/* 印刷・PDF・見積検索ボタン */}
-      <div className="flex justify-end gap-1 mb-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">見積登録</h1>
+      </div>
+
+      <div className="flex justify-start gap-1">
         <Dialog open={quotationSearchDialogOpen} onOpenChange={setQuotationSearchDialogOpen}>
           <DialogTrigger asChild>
             <Button
@@ -1345,25 +1303,6 @@ export default function QuotationRegister() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="dialog-quotationStatus" className="text-xs font-medium">
-                      見積もりステータス
-                    </Label>
-                    <select
-                      id="dialog-quotationStatus"
-                      value={quotationSearchConditions.quotationStatus}
-                      onChange={(e) =>
-                        setQuotationSearchConditions((prev) => ({ ...prev, quotationStatus: e.target.value }))
-                      }
-                      className="h-8 text-xs w-full px-2 border border-gray-300 rounded-md bg-white"
-                    >
-                      <option value="">すべて</option>
-                      <option value="draft">下書き</option>
-                      <option value="sent">送信済み</option>
-                      <option value="approved">承認済み</option>
-                      <option value="rejected">却下</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
                     <Label htmlFor="dialog-productName" className="text-xs font-medium">
                       商品名
                     </Label>
@@ -1373,7 +1312,7 @@ export default function QuotationRegister() {
                       onChange={(e) =>
                         setQuotationSearchConditions((prev) => ({ ...prev, productName: e.target.value }))
                       }
-                      placeholder="商品名（部分一致）"
+                      placeholder="商品名"
                       className="h-8 text-xs"
                     />
                   </div>
@@ -1392,6 +1331,21 @@ export default function QuotationRegister() {
                     />
                   </div>
                 </div>
+
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <label className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={quotationSearchConditions.myApprovalOnly}
+                      onChange={(e) =>
+                        setQuotationSearchConditions((prev) => ({ ...prev, myApprovalOnly: e.target.checked }))
+                      }
+                      className="w-3 h-3"
+                    />
+                    <span className="font-medium text-blue-700">自分の承認対象のみ</span>
+                  </label>
+                </div>
+
                 <div className="flex justify-end gap-2 mt-4">
                   <Button
                     variant="outline"
@@ -1411,8 +1365,37 @@ export default function QuotationRegister() {
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <h4 className="text-sm font-semibold">見積一覧</h4>
-
-                  {/* 削除: 50件表示と100件表示のチェックボックス */}
+                  <div className="flex items-center gap-4 text-xs">
+                    <span className="text-gray-600">表示件数:</span>
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="radio"
+                        name="itemsPerPage"
+                        value="50"
+                        checked={itemsPerPage === 50}
+                        onChange={() => {
+                          setItemsPerPage(50)
+                          setCurrentQuotationPage(1) // ページをリセット
+                        }}
+                        className="w-3 h-3"
+                      />
+                      <span>50件</span>
+                    </label>
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="radio"
+                        name="itemsPerPage"
+                        value="100"
+                        checked={itemsPerPage === 100}
+                        onChange={() => {
+                          setItemsPerPage(100)
+                          setCurrentQuotationPage(1) // ページをリセット
+                        }}
+                        className="w-3 h-3"
+                      />
+                      <span>100件</span>
+                    </label>
+                  </div>
                 </div>
                 {isQuotationSearched && quotationSearchResults.length > 0 ? (
                   <div className="overflow-x-auto max-h-80">
@@ -1420,54 +1403,37 @@ export default function QuotationRegister() {
                       <thead className="sticky top-0" style={{ backgroundColor: "#f8f9fa" }}>
                         <tr className="text-gray-600">
                           <th className="border border-gray-300 px-2 py-2 text-left">見積番号</th>
-                          <th className="border border-gray-300 px-2 py-2 text-left">見積日</th>
-                          <th className="border border-gray-300 px-2 py-2 text-left">得意先コード</th>
                           <th className="border border-gray-300 px-2 py-2 text-left">得意先名</th>
-                          <th className="border border-gray-300 px-2 py-2 text-left">担当者名</th>
-                          <th className="border border-gray-300 px-2 py-2 text-left">見積ステータス</th>
-                          <th className="border border-gray-300 px-2 py-2 text-right">見積金額</th>
+                          <th className="border border-gray-300 px-2 py-2 text-left">見積日</th>
                           <th className="border border-gray-300 px-2 py-2 text-left">商品名</th>
                           <th className="border border-gray-300 px-2 py-2 text-left">商品コード</th>
+                          <th className="border border-gray-300 px-2 py-2 text-right">見積金額</th>
                           <th className="border border-gray-300 px-2 py-2 text-center">選択</th>
+                          <th className="border border-gray-300 px-2 py-2 text-center">複製</th>
                         </tr>
                       </thead>
                       <tbody>
                         {currentQuotations.map((quotation) => (
                           <tr key={quotation.id} className="hover:opacity-90" style={{ backgroundColor: "#FAF5E9" }}>
                             <td className="border border-gray-300 px-2 py-1 font-mono">{quotation.quotationNumber}</td>
-                            <td className="border border-gray-300 px-2 py-1">{quotation.quotationDate}</td>
-                            <td className="border border-gray-300 px-2 py-1 font-mono">
-                              {quotation.customerCode || "C001"}
-                            </td>
                             <td className="border border-gray-300 px-2 py-1">{quotation.customerName}</td>
+                            <td className="border border-gray-300 px-2 py-1">{quotation.quotationDate}</td>
                             <td className="border border-gray-300 px-2 py-1">
-                              {quotation.personInCharge || "田中太郎"}
+                              {quotation.items.map((item, index) => (
+                                <div key={index} className={index > 0 ? "mt-1 pt-1 border-t border-gray-200" : ""}>
+                                  {item.productName}
+                                </div>
+                              ))}
                             </td>
-                            <td className="border border-gray-300 px-2 py-1">
-                              <span
-                                className={`px-2 py-1 rounded text-xs ${
-                                  quotation.status === "承認済み"
-                                    ? "bg-green-100 text-green-800"
-                                    : quotation.status === "保留中"
-                                      ? "bg-yellow-100 text-yellow-800"
-                                      : "bg-gray-100 text-gray-800"
-                                }`}
-                              >
-                                {quotation.status || "作成中"}
-                              </span>
+                            <td className="border border-gray-300 px-2 py-1 font-mono">
+                              {quotation.items.map((item, index) => (
+                                <div key={index} className={index > 0 ? "mt-1 pt-1 border-t border-gray-200" : ""}>
+                                  {item.makerCode}
+                                </div>
+                              ))}
                             </td>
                             <td className="border border-gray-300 px-2 py-1 text-right">
                               ¥{quotation.quotationTotal.toLocaleString()}
-                            </td>
-                            <td className="border border-gray-300 px-2 py-1">
-                              {quotation.items && quotation.items.length > 0
-                                ? quotation.items.map((item) => item.productName).join(", ")
-                                : "-"}
-                            </td>
-                            <td className="border border-gray-300 px-2 py-1 font-mono">
-                              {quotation.items && quotation.items.length > 0
-                                ? quotation.items.map((item) => item.makerCode).join(", ")
-                                : "-"}
                             </td>
                             <td className="border border-gray-300 px-2 py-1 text-center">
                               <Button
@@ -1476,6 +1442,16 @@ export default function QuotationRegister() {
                                 className="h-6 px-3 text-xs"
                               >
                                 選択
+                              </Button>
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1 text-center">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => duplicateQuotationFromSearch(quotation)}
+                                className="h-6 px-3 text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+                              >
+                                複製
                               </Button>
                             </td>
                           </tr>
@@ -1488,63 +1464,32 @@ export default function QuotationRegister() {
                 ) : (
                   <div className="text-center py-8 text-gray-500">見積を検索してください</div>
                 )}
+                {/* ページングコントロール */}
                 {isQuotationSearched && quotationSearchResults.length > 0 && (
-                  <div className="flex justify-between items-center mt-4 text-xs">
-                    <div className="flex items-center gap-4">
-                      <label className="flex items-center gap-1">
-                        <input
-                          type="checkbox"
-                          checked={quotationItemsPerPage === 50}
-                          onChange={() => {
-                            setQuotationItemsPerPage(50)
-                            setCurrentQuotationPage(1)
-                          }}
-                          className="w-3 h-3"
-                        />
-                        50件表示
-                      </label>
-                      <label className="flex items-center gap-1">
-                        <input
-                          type="checkbox"
-                          checked={quotationItemsPerPage === 100}
-                          onChange={() => {
-                            setQuotationItemsPerPage(100)
-                            setCurrentQuotationPage(1)
-                          }}
-                          className="w-3 h-3"
-                        />
-                        100件表示
-                      </label>
+                  <div className="flex justify-end items-center mt-4 text-xs">
+                    <div className="mr-4">
+                      {startIndex + 1} - {Math.min(endIndex, quotationSearchResults.length)} 件 / 全{" "}
+                      {quotationSearchResults.length} 件
                     </div>
-
-                    <div className="flex items-center gap-4">
-                      <div>
-                        {quotationStartIndex + 1} - {Math.min(quotationEndIndex, quotationSearchResults.length)} 件 / 全{" "}
-                        {quotationSearchResults.length} 件
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCurrentQuotationPage((prev) => Math.max(1, prev - 1))}
-                          disabled={currentQuotationPage === 1}
-                          className="h-7 px-3 text-xs"
-                        >
-                          前へ
-                        </Button>
-                        <span className="flex items-center px-2 text-xs">
-                          {currentQuotationPage} / {totalQuotationPages}
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCurrentQuotationPage((prev) => Math.min(totalQuotationPages, prev + 1))}
-                          disabled={currentQuotationPage === totalQuotationPages || totalQuotationPages === 0}
-                          className="h-7 px-3 text-xs"
-                        >
-                          次へ
-                        </Button>
-                      </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentQuotationPage((prev) => Math.max(1, prev - 1))}
+                        disabled={currentQuotationPage === 1}
+                        className="h-7 px-3 text-xs"
+                      >
+                        前へ
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentQuotationPage((prev) => Math.min(totalPages, prev + 1))}
+                        disabled={currentQuotationPage === totalPages || totalPages === 0}
+                        className="h-7 px-3 text-xs"
+                      >
+                        次へ
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -1558,291 +1503,6 @@ export default function QuotationRegister() {
             </div>
           </DialogContent>
         </Dialog>
-
-        <Dialog open={productSearchDialogOpen} onOpenChange={setProductSearchDialogOpen}>
-          <DialogTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 px-2 text-xs border-gray-300 hover:bg-gray-100 bg-white text-gray-700"
-              onClick={() => {
-                setProductSearchDialogOpen(true)
-                clearProductSearchConditions()
-              }}
-            >
-              <Package className="w-3 h-3 mr-1" />
-              商品検索
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-6xl max-h-[90vh] overflow-auto" style={{ backgroundColor: "#FAF5E9" }}>
-            <DialogHeader style={{ backgroundColor: "#FAF5E9" }}>
-              <DialogTitle>商品検索</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              {/* 検索モード切替 */}
-              <div className="flex gap-4">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="radio"
-                    id="product-mode"
-                    name="search-mode"
-                    checked={productSearchMode === "product"}
-                    onChange={() => setProductSearchMode("product")}
-                  />
-                  <Label htmlFor="product-mode">商品検索</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="radio"
-                    id="bestseller-mode"
-                    name="search-mode"
-                    checked={productSearchMode === "bestseller"}
-                    onChange={() => setProductSearchMode("bestseller")}
-                  />
-                  <Label htmlFor="bestseller-mode">売れ筋検索</Label>
-                </div>
-              </div>
-
-              {/* 検索条件 */}
-              <div className="p-4 rounded" style={{ backgroundColor: "#FAF5E9" }}>
-                <h4 className="text-sm font-semibold mb-2">【検索条件】</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium">商品権利コード</Label>
-                    <Input
-                      type="text"
-                      value={productSearchConditions.productRightCode}
-                      onChange={(e) =>
-                        setProductSearchConditions((prev) => ({
-                          ...prev,
-                          productRightCode: e.target.value,
-                        }))
-                      }
-                      className="h-7 text-xs"
-                      placeholder="部分一致"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium">商品管理コード枝番</Label>
-                    <Input
-                      type="text"
-                      value={productSearchConditions.productManagementCode}
-                      onChange={(e) =>
-                        setProductSearchConditions((prev) => ({
-                          ...prev,
-                          productManagementCode: e.target.value,
-                        }))
-                      }
-                      className="h-7 text-xs"
-                      placeholder="部分一致"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium">メーカーコード</Label>
-                    <Input
-                      type="text"
-                      value={productSearchConditions.makerCode}
-                      onChange={(e) =>
-                        setProductSearchConditions((prev) => ({
-                          ...prev,
-                          makerCode: e.target.value,
-                        }))
-                      }
-                      className="h-7 text-xs"
-                      placeholder="部分一致"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium">商品名</Label>
-                    <Input
-                      type="text"
-                      value={productSearchConditions.productName}
-                      onChange={(e) =>
-                        setProductSearchConditions((prev) => ({
-                          ...prev,
-                          productName: e.target.value,
-                        }))
-                      }
-                      className="h-7 text-xs"
-                      placeholder="部分一致"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium">規格</Label>
-                    <Input
-                      type="text"
-                      value={productSearchConditions.specification}
-                      onChange={(e) =>
-                        setProductSearchConditions((prev) => ({
-                          ...prev,
-                          specification: e.target.value,
-                        }))
-                      }
-                      className="h-7 text-xs"
-                      placeholder="部分一致"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end mt-4">
-                <div className="flex gap-2">
-                  <Button onClick={executeProductSearch} className="bg-blue-600 hover:bg-blue-700 text-white" size="sm">
-                    <Search className="w-3 h-3 mr-1" />
-                    検索
-                  </Button>
-                  <Button onClick={clearProductSearchConditions} variant="outline" size="sm">
-                    <X className="w-3 h-3 mr-1" />
-                    クリア
-                  </Button>
-                </div>
-              </div>
-
-              {/* 検索結果 */}
-              {productSearchResults.length > 0 && (
-                <div className="space-y-4">
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-12">選択</TableHead>
-                          <TableHead>メーカーコード</TableHead>
-                          <TableHead>商品コード</TableHead>
-                          <TableHead>商品名</TableHead>
-                          <TableHead>規格</TableHead>
-                          {productSearchMode === "product" ? (
-                            <TableHead>最終更新日時</TableHead>
-                          ) : (
-                            <>
-                              <TableHead>売上日</TableHead>
-                              <TableHead>単価</TableHead>
-                              <TableHead>原価</TableHead>
-                              <TableHead>数量</TableHead>
-                            </>
-                          )}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {productSearchResults.map((product) => (
-                          <TableRow key={product.id}>
-                            <TableCell>
-                              <input
-                                type="checkbox"
-                                checked={selectedProducts.includes(product.id)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedProducts((prev) => [...prev, product.id])
-                                  } else {
-                                    setSelectedProducts((prev) => prev.filter((id) => id !== product.id))
-                                  }
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell>{product.makerCode}</TableCell>
-                            <TableCell>{product.productCode}</TableCell>
-                            <TableCell>{product.productName}</TableCell>
-                            <TableCell>{product.specification}</TableCell>
-                            {productSearchMode === "product" ? (
-                              <TableCell>{product.lastUpdated}</TableCell>
-                            ) : (
-                              <>
-                                <TableCell>{product.salesDate}</TableCell>
-                                <TableCell>¥{product.unitPrice.toLocaleString()}</TableCell>
-                                <TableCell>¥{product.cost.toLocaleString()}</TableCell>
-                                <TableCell>{product.quantity}</TableCell>
-                              </>
-                            )}
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  {/* ページネーション設定と情報 */}
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id="product-50-items"
-                          checked={productSearchItemsPerPage === 50}
-                          onChange={() => setProductSearchItemsPerPage(50)}
-                        />
-                        <Label htmlFor="product-50-items" className="text-sm">
-                          50件表示
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id="product-100-items"
-                          checked={productSearchItemsPerPage === 100}
-                          onChange={() => setProductSearchItemsPerPage(100)}
-                        />
-                        <Label htmlFor="product-100-items" className="text-sm">
-                          100件表示
-                        </Label>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-600">
-                        {(productSearchCurrentPage - 1) * productSearchItemsPerPage + 1}-
-                        {Math.min(productSearchCurrentPage * productSearchItemsPerPage, productSearchResults.length)}/
-                        全{productSearchResults.length}件
-                      </span>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setProductSearchCurrentPage((prev) => Math.max(1, prev - 1))}
-                          disabled={productSearchCurrentPage === 1}
-                        >
-                          前へ
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setProductSearchCurrentPage((prev) => prev + 1)}
-                          disabled={productSearchCurrentPage * productSearchItemsPerPage >= productSearchResults.length}
-                        >
-                          次へ
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 選択した商品を見積に追加ボタン */}
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      onClick={addSelectedProductsToQuotation}
-                      disabled={selectedProducts.length === 0}
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                    >
-                      選択商品を見積に追加 ({selectedProducts.length}件)
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* ダイアログ操作ボタン */}
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => setProductSearchDialogOpen(false)}>
-                  閉じる
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={saveDraft}
-          className="h-6 px-2 text-xs border-orange-300 hover:bg-orange-50 bg-white text-orange-700"
-        >
-          <FileEdit className="w-3 h-3 mr-1" />
-          下書き
-        </Button>
 
         <Button
           variant="outline"
@@ -1868,6 +1528,42 @@ export default function QuotationRegister() {
           PDF
         </Button>
       </div>
+
+      <Dialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
+        <DialogContent className="max-w-md" style={{ backgroundColor: "#FAF5E9" }}>
+          <DialogHeader>
+            <DialogTitle>{approvalType === "approve" ? "承認" : "否認"}理由の入力</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="approvalReason" className="text-sm font-medium">
+                {approvalType === "approve" ? "承認" : "否認"}理由
+              </Label>
+              <Textarea
+                id="approvalReason"
+                value={approvalReason}
+                onChange={(e) => setApprovalReason(e.target.value)}
+                placeholder={`${approvalType === "approve" ? "承認" : "否認"}理由を入力してください`}
+                className="min-h-[100px] resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setApprovalDialogOpen(false)} className="px-4">
+                キャンセル
+              </Button>
+              <Button
+                onClick={submitApprovalAction}
+                className={
+                  approvalType === "approve" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"
+                }
+                disabled={!approvalReason.trim()}
+              >
+                {approvalType === "approve" ? "承認" : "否認"}実行
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Card className="bg-[#FAF5E9]">
         <CardHeader className="pb-4">
@@ -1940,15 +1636,29 @@ export default function QuotationRegister() {
                   value={formData.customerName}
                   onChange={(e) => handleInputChange("customerName", e.target.value)}
                   onClick={() => {
+                    console.log("[v0] customerName input clicked")
+                    console.log("[v0] customerName value:", formData.customerName)
+                    console.log("[v0] customerName trimmed:", formData.customerName.trim())
                     if (!formData.customerName.trim()) {
+                      console.log("[v0] calling openCustomerSearch")
                       openCustomerSearch()
+                    } else {
+                      console.log("[v0] customerName not empty, not opening search")
                     }
                   }}
                   placeholder="宛名"
                   className="h-8 text-xs cursor-pointer"
                   readOnly={!formData.customerName.trim()}
                 />
-                <Button variant="outline" size="sm" onClick={openCustomerSearch} className="h-8 w-8 p-0 bg-white">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    console.log("[v0] search button clicked")
+                    openCustomerSearch()
+                  }}
+                  className="h-8 w-8 p-0 bg-white"
+                >
                   <Search className="w-3 h-3" />
                 </Button>
               </div>
@@ -2273,15 +1983,7 @@ export default function QuotationRegister() {
               </RadioGroup>
             </div>
 
-            {/* 承認フロー情報 */}
-            <div className="bg-blue-50 p-2 rounded text-xs">
-              <div className="font-medium text-blue-800 mb-1">承認条件</div>
-              <div className="text-blue-700 space-y-0.5">
-                <div>20万円以上：担当承認</div>
-                <div>100万円以上：管理者承認</div>
-                <div>利益率10％未満：特別承認</div>
-              </div>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{/* 承認条件のブロックを削除 */}</div>
           </div>
 
           {/* 商品明細セクション */}
@@ -2537,245 +2239,120 @@ export default function QuotationRegister() {
               </table>
             </div>
 
-            {/* 備考欄 */}
-            <div className="space-y-2 mt-4">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-gray-300 text-xs">
-                  <thead>
-                    <tr style={{ backgroundColor: "#f8f9fa" }} className="text-gray-600">
-                      <th className="border border-gray-300 px-2 py-1 font-medium text-left">備考内容</th>
-                      <th className="border border-gray-300 px-2 py-1 font-medium text-center w-20">文字数</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr style={{ backgroundColor: "#FAF5E9" }}>
-                      <td className="border border-gray-300 px-0.5 py-0.5">
-                        <Input
-                          value={formData.remarks1}
-                          onChange={(e) => handleInputChange("remarks1", e.target.value)}
-                          maxLength={70}
-                          className="h-8 text-xs border-0 p-2 w-full"
-                          placeholder="備考1行目（70文字まで）"
-                        />
-                      </td>
-                      <td className="border border-gray-300 px-2 py-1 text-center text-gray-500">
-                        {formData.remarks1.length}/70
-                      </td>
-                    </tr>
-                    <tr style={{ backgroundColor: "#FAF5E9" }}>
-                      <td className="border border-gray-300 px-0.5 py-0.5">
-                        <Input
-                          value={formData.remarks2}
-                          onChange={(e) => handleInputChange("remarks2", e.target.value)}
-                          maxLength={70}
-                          className="h-8 text-xs border-0 p-2 w-full"
-                          placeholder="備考2行目（70文字まで）"
-                        />
-                      </td>
-                      <td className="border border-gray-300 px-2 py-1 text-center text-gray-500">
-                        {formData.remarks2.length}/70
-                      </td>
-                    </tr>
-                    <tr style={{ backgroundColor: "#FAF5E9" }}>
-                      <td className="border border-gray-300 px-0.5 py-0.5">
-                        <Input
-                          value={formData.remarks3}
-                          onChange={(e) => handleInputChange("remarks3", e.target.value)}
-                          maxLength={70}
-                          className="h-8 text-xs border-0 p-2 w-full"
-                          placeholder="備考3行目（70文字まで）"
-                        />
-                      </td>
-                      <td className="border border-gray-300 px-2 py-1 text-center text-gray-500">
-                        {formData.remarks3.length}/70
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+            {/* 備考欄と承認状況を並列配置 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+              {/* 左側：備考欄 */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <h2 className="text-lg font-bold text-gray-800">備考内容</h2>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse border border-gray-300 text-xs">
+                        <thead>
+                          <tr style={{ backgroundColor: "#f8f9fa" }} className="text-gray-600">
+                            <th className="border border-gray-300 px-2 py-1 font-medium text-left">備考内容</th>
+                            <th className="border border-gray-300 px-2 py-1 font-medium text-center w-20">文字数</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr style={{ backgroundColor: "#FAF5E9" }}>
+                            <td className="border border-gray-300 px-0.5 py-0.5">
+                              <Input
+                                value={formData.remarks1}
+                                onChange={(e) => handleInputChange("remarks1", e.target.value)}
+                                maxLength={70}
+                                className="h-8 text-xs border-0 p-2 w-full"
+                                placeholder="備考1行目（70文字まで）"
+                              />
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1 text-center text-gray-500">
+                              {formData.remarks1.length}/70
+                            </td>
+                          </tr>
+                          <tr style={{ backgroundColor: "#FAF5E9" }}>
+                            <td className="border border-gray-300 px-0.5 py-0.5">
+                              <Input
+                                value={formData.remarks2}
+                                onChange={(e) => handleInputChange("remarks2", e.target.value)}
+                                maxLength={70}
+                                className="h-8 text-xs border-0 p-2 w-full"
+                                placeholder="備考2行目（70文字まで）"
+                              />
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1 text-center text-gray-500">
+                              {formData.remarks2.length}/70
+                            </td>
+                          </tr>
+                          <tr style={{ backgroundColor: "#FAF5E9" }}>
+                            <td className="border border-gray-300 px-0.5 py-0.5">
+                              <Input
+                                value={formData.remarks3}
+                                onChange={(e) => handleInputChange("remarks3", e.target.value)}
+                                maxLength={70}
+                                className="h-8 text-xs border-0 p-2 w-full"
+                                placeholder="備考3行目（70文字まで）"
+                              />
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1 text-center text-gray-500">
+                              {formData.remarks3.length}/70
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 右側：承認状況 */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <h2 className="text-lg font-bold text-gray-800">承認状況</h2>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium text-gray-600">承認者</Label>
+                      <div className="px-3 py-2 bg-gray-50 border rounded-md text-gray-700">田中 太郎</div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium text-gray-600">承認状態</Label>
+                      <div className="px-3 py-2 bg-gray-50 border rounded-md">
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          承認待ち
+                        </span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium text-gray-600">承認コメント</Label>
+                      <div className="px-3 py-2 bg-gray-50 border rounded-md text-gray-700 min-h-[2.5rem]">
+                        金額の再確認をお願いします。
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </CardContent>
-
-        {/* 得意先検索ダイアログ */}
-        <Dialog open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
-          <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden">
-            <DialogHeader>
-              <DialogTitle>得意先検索</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              {/* 検索条件 */}
-              <div className="p-4 rounded" style={{ backgroundColor: "#FAF5E9" }}>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">得意先コード</Label>
-                  <Input
-                    value={customerSearchCondition}
-                    onChange={(e) => setCustomerSearchCondition(e.target.value)}
-                    placeholder="得意先コードを入力"
-                    className="text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* 検索結果 */}
-              <div className="max-h-96 overflow-y-auto">
-                <table className="w-full border-collapse border border-gray-300 text-sm">
-                  <thead className="sticky top-0" style={{ backgroundColor: "#FAF5E9" }}>
-                    <tr>
-                      <th className="border border-gray-300 px-3 py-2 text-left">得意先コード</th>
-                      <th className="border border-gray-300 px-3 py-2 text-left">宛名</th>
-                      <th className="border border-gray-300 px-3 py-2 text-center">選択</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {getFilteredCustomers().map((customer) => (
-                      <tr key={customer.id} className="hover:opacity-90" style={{ backgroundColor: "#FAF5E9" }}>
-                        <td className="border border-gray-300 px-3 py-2 font-mono">{customer.customerCode}</td>
-                        <td className="border border-gray-300 px-3 py-2">{customer.customerName}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-center">
-                          <Button size="sm" onClick={() => selectCustomer(customer)} className="h-7 px-3 text-xs">
-                            選択
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {getFilteredCustomers().length === 0 && (
-                  <div className="text-center py-8 text-gray-500">検索条件に一致する得意先が見つかりません</div>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setCustomerSearchOpen(false)}>
-                  キャンセル
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* 商品検索ダイアログ */}
-        <Dialog open={productSearchOpen} onOpenChange={setProductSearchOpen}>
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
-            <DialogHeader>
-              <DialogTitle>商品検索</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              {/* 検索条件 */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded" style={{ backgroundColor: "#FAF5E9" }}>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">商品名（部分一致）</Label>
-                  <Input
-                    value={searchConditions.productName}
-                    onChange={(e) => setSearchConditions((prev) => ({ ...prev, productName: e.target.value }))}
-                    placeholder="商品名を入力"
-                    className="text-sm"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">メーカー商品コード（完全一致）</Label>
-                  <Input
-                    value={searchConditions.makerCode}
-                    onChange={(e) => setSearchConditions((prev) => ({ ...prev, makerCode: e.target.value }))}
-                    placeholder="商品コードを入力"
-                    className="text-sm"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">表示条件</Label>
-                  <RadioGroup
-                    value={searchConditions.filterType}
-                    onChange={(value) =>
-                      setSearchConditions((prev) => ({ ...prev, filterType: value as "bestseller" | "all" }))
-                    }
-                    className="flex gap-4"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="bestseller" id="bestseller" />
-                      <Label htmlFor="bestseller" className="text-sm">
-                        売れ筋
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="all" id="all" />
-                      <Label htmlFor="all" className="text-sm">
-                        すべて
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-              </div>
-
-              {/* 検索結果 */}
-              <div className="max-h-96 overflow-y-auto">
-                <table className="w-full border-collapse border border-gray-300 text-sm">
-                  <thead className="sticky top-0" style={{ backgroundColor: "#FAF5E9" }}>
-                    <tr>
-                      <th className="border border-gray-300 px-2 py-2 text-left">メーカー名</th>
-                      <th className="border border-gray-300 px-2 py-2 text-left">商品コード</th>
-                      <th className="border border-gray-300 px-2 py-2 text-left">商品名</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center">単位</th>
-                      <th className="border border-gray-300 px-2 py-2 text-right">定価</th>
-                      <th className="border border-gray-300 px-2 py-2 text-right">仕切価</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center">売れ筋</th>
-                      <th className="border border-gray-300 px-2 py-2 text-center">選択</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {getFilteredProducts().map((product) => (
-                      <tr key={product.id} className="hover:opacity-90" style={{ backgroundColor: "#FAF5E9" }}>
-                        <td className="border border-gray-300 px-2 py-2">{product.makerName}</td>
-                        <td className="border border-gray-300 px-2 py-2 font-mono text-xs">{product.makerCode}</td>
-                        <td className="border border-gray-300 px-2 py-2">{product.productName}</td>
-                        <td className="border border-gray-300 px-2 py-2 text-center">{product.unit}</td>
-                        <td className="border border-gray-300 px-2 py-2 text-right">
-                          ¥{Number(product.listPrice).toLocaleString()}
-                        </td>
-                        <td className="border border-gray-300 px-2 py-2 text-right">
-                          ¥{Number(product.wholesalePrice).toLocaleString()}
-                        </td>
-                        <td className="border border-gray-300 px-2 py-2 text-center">
-                          {product.isBestseller ? (
-                            <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded">売れ筋</span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">-</span>
-                          )}
-                        </td>
-                        <td className="border border-gray-300 px-2 py-2 text-center">
-                          <Button size="sm" onClick={() => selectProduct(product)} className="h-7 px-3 text-xs">
-                            選択
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {getFilteredProducts().length === 0 && (
-                  <div className="text-center py-8 text-gray-500">検索条件に一致する商品が見つかりません</div>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setProductSearchOpen(false)}>
-                  キャンセル
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
       </Card>
-      {/* 登録（一時保存）とコピー＆編集ボタン - エンティティ外の下部 */}
+
       <div className="flex justify-end gap-2 mb-32">
         <Button
-          onClick={() => console.log("コピー＆編集を実行")}
-          className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
+          onClick={() => handleApprovalAction("approve")}
+          className="h-10 px-4 bg-green-600 hover:bg-green-700 text-white shadow-lg"
         >
-          <Copy className="w-4 h-4 mr-2" />
-          コピー＆編集
+          <CheckCircle className="w-4 h-4 mr-2" />
+          承認
+        </Button>
+        <Button onClick={() => handleApprovalAction("reject")} variant="destructive" className="h-10 px-4 shadow-lg">
+          <XCircle className="w-4 h-4 mr-2" />
+          否認
         </Button>
         <Button
-          onClick={() => console.log("一時保存を実行")}
+          onClick={() => console.log("登録（一時保存）を実行")}
           className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
         >
           <Save className="w-4 h-4 mr-2" />
