@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Search, Upload, Plus, Minus, X, Printer, FileText, Save, CheckCircle, XCircle } from "lucide-react"
+import { Search, Upload, Plus, Minus, X, Printer, FileText, Save, CheckCircle, XCircle, RotateCcw } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -147,6 +147,8 @@ export default function QuotationRegister() {
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false)
   const [approvalType, setApprovalType] = useState<"approve" | "reject">("approve")
   const [approvalReason, setApprovalReason] = useState("")
+
+  const [registrationSuccess, setRegistrationSuccess] = useState(false)
 
   // サンプル商品データ (医薬品に変更)
   const sampleProducts = [
@@ -1193,13 +1195,73 @@ export default function QuotationRegister() {
     setApprovalReason("")
   }
 
+  const handleRegister = () => {
+    console.log("登録を実行")
+    // 実際の登録処理はここに実装される
+    setRegistrationSuccess(true)
+  }
+
   return (
     <div className="max-w-full mx-auto space-y-4 px-2" style={{ backgroundColor: "#FAF5E9", minHeight: "100vh" }}>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">見積登録</h1>
-      </div>
-
       <div className="flex justify-start gap-1">
+        <Dialog open={customerSearchOpen} onOpenChange={setCustomerSearchOpen}>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden">
+            <DialogHeader>
+              <DialogTitle>得意先検索</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* 検索条件 */}
+              <div className="p-4 bg-gray-50 rounded">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">得意先コード</Label>
+                  <Input
+                    value={customerSearchCondition}
+                    onChange={(e) => setCustomerSearchCondition(e.target.value)}
+                    placeholder="得意先コードを入力"
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* 検索結果 */}
+              <div className="max-h-96 overflow-y-auto">
+                <table className="w-full border-collapse border border-gray-300 text-sm">
+                  <thead className="sticky top-0 bg-gray-50">
+                    <tr>
+                      <th className="border border-gray-300 px-3 py-2 text-left">得意先コード</th>
+                      <th className="border border-gray-300 px-3 py-2 text-left">宛名</th>
+                      <th className="border border-gray-300 px-3 py-2 text-center">選択</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getFilteredCustomers().map((customer) => (
+                      <tr key={customer.id} className="hover:bg-gray-50">
+                        <td className="border border-gray-300 px-3 py-2 font-mono">{customer.customerCode}</td>
+                        <td className="border border-gray-300 px-3 py-2">{customer.customerName}</td>
+                        <td className="border border-gray-300 px-3 py-2 text-center">
+                          <Button size="sm" onClick={() => selectCustomer(customer)} className="h-7 px-3 text-xs">
+                            選択
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {getFilteredCustomers().length === 0 && (
+                  <div className="text-center py-8 text-gray-500">検索条件に一致する得意先が見つかりません</div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setCustomerSearchOpen(false)}>
+                  キャンセル
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 見積検索ダイアログ */}
         <Dialog open={quotationSearchDialogOpen} onOpenChange={setQuotationSearchDialogOpen}>
           <DialogTrigger asChild>
             <Button
@@ -1504,6 +1566,108 @@ export default function QuotationRegister() {
           </DialogContent>
         </Dialog>
 
+        {/* 商品検索ダイアログ */}
+        <Dialog open={productSearchOpen} onOpenChange={setProductSearchOpen}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+            <DialogHeader>
+              <DialogTitle>商品検索</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* 検索条件 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">商品名（部分一致）</Label>
+                  <Input
+                    value={searchConditions.productName}
+                    onChange={(e) => setSearchConditions((prev) => ({ ...prev, productName: e.target.value }))}
+                    placeholder="商品名を入力"
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">メーカーコード</Label>
+                  <Input
+                    value={searchConditions.makerCode}
+                    onChange={(e) => setSearchConditions((prev) => ({ ...prev, makerCode: e.target.value }))}
+                    placeholder="メーカーコード"
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">絞り込み</Label>
+                  <Select
+                    value={searchConditions.filterType}
+                    onValueChange={(value) => setSearchConditions((prev) => ({ ...prev, filterType: value }))}
+                  >
+                    <SelectTrigger className="text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bestseller">売れ筋商品</SelectItem>
+                      <SelectItem value="new">新商品</SelectItem>
+                      <SelectItem value="all">全商品</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* 検索ボタン */}
+              <div className="flex justify-center">
+                <Button
+                  onClick={() => {
+                    console.log("[v0] 商品検索実行")
+                    // 実際の検索処理はここに実装
+                  }}
+                  className="px-8"
+                >
+                  検索
+                </Button>
+              </div>
+
+              {/* 検索結果テーブル */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="max-h-96 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th className="border border-gray-300 px-2 py-1 text-left">商品コード</th>
+                        <th className="border border-gray-300 px-2 py-1 text-left">商品名</th>
+                        <th className="border border-gray-300 px-2 py-1 text-left">メーカー</th>
+                        <th className="border border-gray-300 px-2 py-1 text-right">単価</th>
+                        <th className="border border-gray-300 px-2 py-1 text-center">選択</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* サンプルデータ */}
+                      <tr className="hover:bg-gray-50">
+                        <td className="border border-gray-300 px-2 py-1">P001</td>
+                        <td className="border border-gray-300 px-2 py-1">サンプル商品A</td>
+                        <td className="border border-gray-300 px-2 py-1">メーカーA</td>
+                        <td className="border border-gray-300 px-2 py-1 text-right">¥1,000</td>
+                        <td className="border border-gray-300 px-2 py-1 text-center">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (currentSearchRow !== null) {
+                                handleItemChange(currentSearchRow, "productCode", "P001")
+                                handleItemChange(currentSearchRow, "productName", "サンプル商品A")
+                                handleItemChange(currentSearchRow, "unitPrice", 1000)
+                                setProductSearchOpen(false)
+                              }
+                            }}
+                          >
+                            選択
+                          </Button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <Button
           variant="outline"
           size="sm"
@@ -1635,20 +1799,8 @@ export default function QuotationRegister() {
                   id="customerName"
                   value={formData.customerName}
                   onChange={(e) => handleInputChange("customerName", e.target.value)}
-                  onClick={() => {
-                    console.log("[v0] customerName input clicked")
-                    console.log("[v0] customerName value:", formData.customerName)
-                    console.log("[v0] customerName trimmed:", formData.customerName.trim())
-                    if (!formData.customerName.trim()) {
-                      console.log("[v0] calling openCustomerSearch")
-                      openCustomerSearch()
-                    } else {
-                      console.log("[v0] customerName not empty, not opening search")
-                    }
-                  }}
                   placeholder="宛名"
-                  className="h-8 text-xs cursor-pointer"
-                  readOnly={!formData.customerName.trim()}
+                  className="h-8 text-xs"
                 />
                 <Button
                   variant="outline"
@@ -2064,34 +2216,44 @@ export default function QuotationRegister() {
                           />
                         </td>
                         <td className="border border-gray-300 px-0.5 py-0.5">
-                          <Input
-                            value={item.makerCode}
-                            onChange={(e) => handleItemChange(index, "makerCode", e.target.value)}
-                            onClick={() => {
-                              if (!item.makerCode.trim()) {
-                                openProductSearch(index)
-                              }
-                            }}
-                            maxLength={10}
-                            className="h-6 text-xs border-0 p-1 cursor-pointer"
-                            placeholder="商品コード"
-                            readOnly={!item.makerCode.trim()}
-                          />
+                          <div className="flex gap-1">
+                            <Input
+                              value={item.makerCode}
+                              onChange={(e) => handleItemChange(index, "makerCode", e.target.value)}
+                              maxLength={10}
+                              className="h-6 text-xs border-0 p-1 flex-1"
+                              placeholder="商品コード"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openProductSearch(index)}
+                              className="h-6 w-6 p-0 flex-shrink-0"
+                            >
+                              <Search className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </td>
                         <td className="border border-gray-300 px-0.5 py-0.5">
-                          <Input
-                            value={item.productName}
-                            onChange={(e) => handleItemChange(index, "productName", e.target.value)}
-                            onClick={() => {
-                              if (!item.productName.trim()) {
-                                openProductSearch(index)
-                              }
-                            }}
-                            maxLength={50}
-                            className="h-6 text-xs border-0 p-1 cursor-pointer"
-                            placeholder="商品名"
-                            readOnly={!item.productName.trim()}
-                          />
+                          <div className="flex gap-1">
+                            <Input
+                              value={item.productName}
+                              onChange={(e) => handleItemChange(index, "productName", e.target.value)}
+                              maxLength={50}
+                              className="h-6 text-xs border-0 p-1 flex-1"
+                              placeholder="商品名"
+                            />
+                            <Button
+                              type="button"
+                              onClick={() => openProductSearch(index)}
+                              size="sm"
+                              variant="outline"
+                              className="h-6 w-6 p-0 flex-shrink-0"
+                            >
+                              <Search className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </td>
                         <td className="border border-gray-300 px-0.5 py-0.5">
                           <Input
@@ -2242,7 +2404,7 @@ export default function QuotationRegister() {
             {/* 備考欄と承認状況を並列配置 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
               {/* 左側：備考欄 */}
-              <Card>
+              <Card style={{ backgroundColor: "#FAF5E9" }}>
                 <CardHeader className="pb-2">
                   <h2 className="text-lg font-bold text-gray-800">備考内容</h2>
                 </CardHeader>
@@ -2307,7 +2469,7 @@ export default function QuotationRegister() {
               </Card>
 
               {/* 右側：承認状況 */}
-              <Card>
+              <Card style={{ backgroundColor: "#FAF5E9" }}>
                 <CardHeader className="pb-2">
                   <h2 className="text-lg font-bold text-gray-800">承認状況</h2>
                 </CardHeader>
@@ -2352,13 +2514,43 @@ export default function QuotationRegister() {
           否認
         </Button>
         <Button
-          onClick={() => console.log("登録（一時保存）を実行")}
-          className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
+          onClick={() => console.log("引戻しを実行")}
+          className="bg-orange-600 hover:bg-orange-700 text-white shadow-lg"
+        >
+          <RotateCcw className="w-4 h-4 mr-2" />
+          引戻し
+        </Button>
+        <Button
+          onClick={() => console.log("一時保存を実行")}
+          className="bg-gray-600 hover:bg-gray-700 text-white shadow-lg"
         >
           <Save className="w-4 h-4 mr-2" />
-          登録（一時保存）
+          一時保存
+        </Button>
+        <Button onClick={handleRegister} className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg">
+          <CheckCircle className="w-4 h-4 mr-2" />
+          登録
         </Button>
       </div>
+
+      <Dialog open={registrationSuccess} onOpenChange={setRegistrationSuccess}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <CheckCircle className="w-5 h-5" />
+              登録完了
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-gray-700">見積データが正常に登録されました。</p>
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={() => setRegistrationSuccess(false)} className="bg-blue-600 hover:bg-blue-700 text-white">
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
