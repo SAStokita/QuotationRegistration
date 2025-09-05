@@ -7,9 +7,25 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Search, Upload, Plus, Minus, X, Printer, FileText, Save, CheckCircle, XCircle, RotateCcw } from "lucide-react"
+import {
+  Search,
+  Upload,
+  Plus,
+  Minus,
+  X,
+  Printer,
+  FileText,
+  Save,
+  CheckCircle,
+  XCircle,
+  RotateCcw,
+  ChevronDown,
+} from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface TextRow {
   id: string
@@ -1229,7 +1245,7 @@ export default function QuotationRegister() {
                   <thead className="sticky top-0 bg-gray-50">
                     <tr>
                       <th className="border border-gray-300 px-3 py-2 text-left">得意先コード</th>
-                      <th className="border border-gray-300 px-3 py-2 text-left">宛名</th>
+                      <th className="border border-gray-300 px-3 py-2 text-left">得意先名</th>
                       <th className="border border-gray-300 px-3 py-2 text-center">選択</th>
                     </tr>
                   </thead>
@@ -1339,31 +1355,100 @@ export default function QuotationRegister() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="dialog-customerName" className="text-xs font-medium">
-                      得意先名
-                    </Label>
-                    <Input
-                      id="dialog-customerName"
-                      value={quotationSearchConditions.customerName}
-                      onChange={(e) =>
-                        setQuotationSearchConditions((prev) => ({ ...prev, customerName: e.target.value }))
-                      }
-                      placeholder="得意先名"
-                      className="h-8 text-xs"
-                    />
+                    {/* 4. 得意先名 */}
+                    <div className="space-y-1">
+                      <Label htmlFor="customerName" className="text-xs font-medium">
+                        得意先名 <span className="text-red-500">*</span>
+                      </Label>
+                      <div className="flex gap-1">
+                        <Input
+                          id="customerName"
+                          value={quotationSearchConditions.customerName}
+                          onChange={(e) =>
+                            setQuotationSearchConditions((prev) => ({ ...prev, customerName: e.target.value }))
+                          }
+                          placeholder="得意先名"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
                   </div>
+
                   <div className="space-y-1">
                     <Label htmlFor="dialog-staffName" className="text-xs font-medium">
                       担当者名
                     </Label>
-                    <Input
-                      id="dialog-staffName"
-                      value={quotationSearchConditions.staffName}
-                      onChange={(e) => setQuotationSearchConditions((prev) => ({ ...prev, staffName: e.target.value }))}
-                      placeholder="担当者名"
-                      className="h-8 text-xs"
-                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          className="w-full h-8 justify-between text-xs font-normal bg-white"
+                        >
+                          {quotationSearchConditions.staffName || "担当者名を選択または入力"}
+                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-full p-0">
+                        <Command>
+                          <CommandInput
+                            placeholder="担当者名を検索..."
+                            className="h-8 text-xs"
+                            value={quotationSearchConditions.staffName}
+                            onValueChange={(value) =>
+                              setQuotationSearchConditions((prev) => ({ ...prev, staffName: value }))
+                            }
+                          />
+                          <CommandList>
+                            <CommandEmpty>該当する担当者が見つかりません。</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value="田中太郎"
+                                onSelect={() =>
+                                  setQuotationSearchConditions((prev) => ({ ...prev, staffName: "田中太郎" }))
+                                }
+                              >
+                                田中太郎
+                              </CommandItem>
+                              <CommandItem
+                                value="佐藤花子"
+                                onSelect={() =>
+                                  setQuotationSearchConditions((prev) => ({ ...prev, staffName: "佐藤花子" }))
+                                }
+                              >
+                                佐藤花子
+                              </CommandItem>
+                              <CommandItem
+                                value="鈴木一郎"
+                                onSelect={() =>
+                                  setQuotationSearchConditions((prev) => ({ ...prev, staffName: "鈴木一郎" }))
+                                }
+                              >
+                                鈴木一郎
+                              </CommandItem>
+                              <CommandItem
+                                value="高橋美咲"
+                                onSelect={() =>
+                                  setQuotationSearchConditions((prev) => ({ ...prev, staffName: "高橋美咲" }))
+                                }
+                              >
+                                高橋美咲
+                              </CommandItem>
+                              <CommandItem
+                                value="山田健太"
+                                onSelect={() =>
+                                  setQuotationSearchConditions((prev) => ({ ...prev, staffName: "山田健太" }))
+                                }
+                              >
+                                山田健太
+                              </CommandItem>
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   </div>
+
                   <div className="space-y-1">
                     <Label htmlFor="dialog-productName" className="text-xs font-medium">
                       商品名
@@ -1789,17 +1874,17 @@ export default function QuotationRegister() {
               />
             </div>
 
-            {/* 4. 宛名 */}
+            {/* 4. 得意先名 */}
             <div className="space-y-1">
               <Label htmlFor="customerName" className="text-xs font-medium">
-                宛名 <span className="text-red-500">*</span>
+                得意先名 <span className="text-red-500">*</span>
               </Label>
               <div className="flex gap-1">
                 <Input
                   id="customerName"
                   value={formData.customerName}
                   onChange={(e) => handleInputChange("customerName", e.target.value)}
-                  placeholder="宛名"
+                  placeholder="得意先名"
                   className="h-8 text-xs"
                 />
                 <Button
