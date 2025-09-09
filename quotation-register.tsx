@@ -1217,6 +1217,40 @@ export default function QuotationRegister() {
     setRegistrationSuccess(true)
   }
 
+  const [selectedTemplate, setSelectedTemplate] = useState<{ [key: string]: string }>({})
+
+  const templateOptions = [
+    { value: "※納期については別途ご相談", label: "※納期については別途ご相談" },
+    { value: "※価格は税抜きです", label: "※価格は税抜きです" },
+    { value: "※送料別途", label: "※送料別途" },
+    { value: "※仕様変更の場合は別途お見積り", label: "※仕様変更の場合は別途お見積り" },
+    { value: "※お支払い条件：月末締め翌月末払い", label: "※お支払い条件：月末締め翌月末払い" },
+  ]
+
+  const addTemplateText = (itemIndex: number, textRowId: string) => {
+    const templateKey = `${itemIndex}-${textRowId}`
+    const selectedText = selectedTemplate[templateKey]
+
+    if (selectedText) {
+      const newItems = [...formData.items]
+      const textRow = newItems[itemIndex].textRows.find((row) => row.id === textRowId)
+      if (textRow) {
+        // 既存のテキストがある場合は改行して追加、ない場合はそのまま追加
+        textRow.text = textRow.text ? `${textRow.text}\n${selectedText}` : selectedText
+      }
+      setFormData((prev) => ({
+        ...prev,
+        items: newItems,
+      }))
+
+      // 選択をリセット
+      setSelectedTemplate((prev) => ({
+        ...prev,
+        [templateKey]: "",
+      }))
+    }
+  }
+
   return (
     <div className="max-w-full mx-auto space-y-4 px-2" style={{ backgroundColor: "#FAF5E9", minHeight: "100vh" }}>
       <div className="flex justify-start gap-1">
@@ -2459,13 +2493,51 @@ export default function QuotationRegister() {
                       {/* テキスト行 */}
                       {item.textRows.map((textRow) => (
                         <tr key={`text-${textRow.id}`} style={{ backgroundColor: "#FAF5E9" }}>
-                          <td className="border border-gray-300 px-0.5 py-0.5" colSpan={12}>
+                          <td className="border border-gray-300 px-0.5 py-0.5" colSpan={11}>
                             <Input
                               value={textRow.text}
                               onChange={(e) => handleTextRowChange(index, textRow.id, e.target.value)}
                               className="h-6 text-xs border-0 p-1 bg-transparent w-full"
                               placeholder="自由入力テキスト"
                             />
+                          </td>
+                          <td className="border border-gray-300 px-0.5 py-0.5">
+                            <div className="flex gap-1 items-center">
+                              <Select
+                                value={selectedTemplate[`${index}-${textRow.id}`] || ""}
+                                onValueChange={(value) =>
+                                  setSelectedTemplate((prev) => ({
+                                    ...prev,
+                                    [`${index}-${textRow.id}`]: value,
+                                  }))
+                                }
+                              >
+                                <SelectTrigger className="h-5 w-32 text-xs border-gray-300">
+                                  <SelectValue placeholder="定型文" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-white border border-gray-300 shadow-lg z-50">
+                                  {templateOptions.map((option) => (
+                                    <SelectItem
+                                      key={option.value}
+                                      value={option.value}
+                                      className="text-xs text-gray-900 hover:bg-gray-100 cursor-pointer px-2 py-1"
+                                    >
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => addTemplateText(index, textRow.id)}
+                                className="h-5 w-12 text-xs p-0 bg-blue-50 hover:bg-blue-100"
+                                disabled={!selectedTemplate[`${index}-${textRow.id}`]}
+                                title="定型文を追加"
+                              >
+                                追加
+                              </Button>
+                            </div>
                           </td>
                           <td className="border border-gray-300 px-0.5 py-0.5 text-center">
                             <Button
