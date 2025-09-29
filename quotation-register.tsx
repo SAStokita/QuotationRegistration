@@ -2658,25 +2658,7 @@ export default function QuotationRegister() {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end gap-2 mb-32">
-        <Button
-          onClick={() => handleApprovalAction("approve")}
-          className="h-10 px-4 bg-green-600 hover:bg-green-700 text-white shadow-lg"
-        >
-          <CheckCircle className="w-4 h-4 mr-2" />
-          承認
-        </Button>
-        <Button onClick={() => handleApprovalAction("reject")} variant="destructive" className="h-10 px-4 shadow-lg">
-          <XCircle className="w-4 h-4 mr-2" />
-          否認
-        </Button>
-        <Button
-          onClick={() => console.log("引戻しを実行")}
-          className="bg-orange-600 hover:bg-orange-700 text-white shadow-lg"
-        >
-          <RotateCcw className="w-4 h-4 mr-2" />
-          引戻し
-        </Button>
+      <div className="flex justify-between items-center mb-32">
         <Button
           onClick={() => console.log("一時保存を実行")}
           className="bg-gray-600 hover:bg-gray-700 text-white shadow-lg"
@@ -2684,10 +2666,31 @@ export default function QuotationRegister() {
           <Save className="w-4 h-4 mr-2" />
           一時保存
         </Button>
-        <Button onClick={handleRegister} className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg">
-          <CheckCircle className="w-4 h-4 mr-2" />
-          登録
-        </Button>
+
+        <div className="flex gap-2">
+          <Button
+            onClick={() => handleApprovalAction("approve")}
+            className="h-10 px-4 bg-green-600 hover:bg-green-700 text-white shadow-lg"
+          >
+            <CheckCircle className="w-4 h-4 mr-2" />
+            承認
+          </Button>
+          <Button onClick={() => handleApprovalAction("reject")} variant="destructive" className="h-10 px-4 shadow-lg">
+            <XCircle className="w-4 h-4 mr-2" />
+            否認
+          </Button>
+          <Button
+            onClick={() => console.log("引戻しを実行")}
+            className="bg-orange-600 hover:bg-orange-700 text-white shadow-lg"
+          >
+            <RotateCcw className="w-4 h-4 mr-2" />
+            引戻し
+          </Button>
+          <Button onClick={handleRegister} className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg">
+            <CheckCircle className="w-4 h-4 mr-2" />
+            登録
+          </Button>
+        </div>
       </div>
 
       <Dialog open={registrationSuccess} onOpenChange={setRegistrationSuccess}>
@@ -2701,9 +2704,27 @@ export default function QuotationRegister() {
           <div className="py-4">
             <p className="text-gray-700">見積データが正常に登録されました。</p>
           </div>
-          <div className="flex justify-end">
-            <Button onClick={() => setRegistrationSuccess(false)} className="bg-blue-600 hover:bg-blue-700 text-white">
-              OK
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRegistrationSuccess(false)
+                console.log("メニューに戻る")
+                // メニュー画面への遷移処理をここに実装
+              }}
+              className="border-blue-600 text-blue-600 hover:bg-blue-50"
+            >
+              メニューに戻る
+            </Button>
+            <Button
+              onClick={() => {
+                setRegistrationSuccess(false)
+                console.log("新規登録を続ける")
+                // フォームリセット処理をここに実装
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              新規登録を続ける
             </Button>
           </div>
         </DialogContent>
