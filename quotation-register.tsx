@@ -2709,12 +2709,12 @@ export default function QuotationRegister() {
               variant="outline"
               onClick={() => {
                 setRegistrationSuccess(false)
-                console.log("メニューに戻る")
-                // メニュー画面への遷移処理をここに実装
+                console.log("登録内容を確認")
+                // 登録内容確認画面への遷移処理をここに実装
               }}
               className="border-blue-600 text-blue-600 hover:bg-blue-50"
             >
-              メニューに戻る
+              登録内容を確認する
             </Button>
             <Button
               onClick={() => {
